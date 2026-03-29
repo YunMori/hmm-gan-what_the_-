@@ -1,0 +1,217 @@
+%%% -*-BibTeX-*-
+%%% Do NOT edit. File created by BibTeX with style
+%%% ACM-Reference-Format-Journals [18-Jan-2012].
+
+\begin{thebibliography}{15}
+
+%%% ====================================================================
+%%% NOTE TO THE USER: you can override these defaults by providing
+%%% customized versions of any of these macros before the \bibliography
+%%% command.  Each of them MUST provide its own final punctuation,
+%%% except for \shownote{} and \showURL{}.  The latter two
+%%% do not use final punctuation, in order to avoid confusing it with
+%%% the Web address.
+%%%
+%%% To suppress output of a particular field, define its macro to expand
+%%% to an empty string, or better, \unskip, like this:
+%%%
+%%% \newcommand{\showURL}[1]{\unskip}   % LaTeX syntax
+%%%
+%%% \def \showURL #1{\unskip}           % plain TeX syntax
+%%%
+%%% ====================================================================
+
+\ifx \showCODEN    \undefined \def \showCODEN     #1{\unskip}     \fi
+\ifx \showISBNx    \undefined \def \showISBNx     #1{\unskip}     \fi
+\ifx \showISBNxiii \undefined \def \showISBNxiii  #1{\unskip}     \fi
+\ifx \showISSN     \undefined \def \showISSN      #1{\unskip}     \fi
+\ifx \showLCCN     \undefined \def \showLCCN      #1{\unskip}     \fi
+\ifx \shownote     \undefined \def \shownote      #1{#1}          \fi
+\ifx \showarticletitle \undefined \def \showarticletitle #1{#1}   \fi
+\ifx \showURL      \undefined \def \showURL       {\relax}        \fi
+% The following commands are used for tagged output and should be
+% invisible to TeX
+\providecommand\bibfield[2]{#2}
+\providecommand\bibinfo[2]{#2}
+\providecommand\natexlab[1]{#1}
+\providecommand\showeprint[2][]{arXiv:#2}
+
+\bibitem[Arjovsky et~al\mbox{.}(2017)]%
+        {arjovsky2017wgan}
+\bibfield{author}{\bibinfo{person}{Martin Arjovsky}, \bibinfo{person}{Soumith
+  Chintala}, {and} \bibinfo{person}{L{\'e}on Bottou}.}
+  \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{Wasserstein Generative Adversarial Networks}. In
+  \bibinfo{booktitle}{\emph{International Conference on Machine Learning
+  (ICML)}}.
+\newblock
+
+
+\bibitem[Brunsfeld et~al\mbox{.}(2018)]%
+        {treesitter}
+\bibfield{author}{\bibinfo{person}{Max Brunsfeld} {et~al\mbox{.}}}
+  \bibinfo{year}{2018}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{Tree-sitter: An Incremental Parsing System
+  for Programming Tools}}.
+\newblock
+\urldef\tempurl%
+\url{https://github.com/tree-sitter/tree-sitter}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Card et~al\mbox{.}(1980)]%
+        {card1980klm}
+\bibfield{author}{\bibinfo{person}{Stuart~K. Card}, \bibinfo{person}{Thomas~P.
+  Moran}, {and} \bibinfo{person}{Allen Newell}.}
+  \bibinfo{year}{1980}\natexlab{}.
+\newblock \showarticletitle{The Keystroke-Level Model for User Performance Time
+  with Interactive Systems}.
+\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{23},
+  \bibinfo{number}{7} (\bibinfo{year}{1980}), \bibinfo{pages}{396--410}.
+\newblock
+\href{https://doi.org/10.1145/358886.358895}{doi:\nolinkurl{10.1145/358886.358895}}
+
+
+\bibitem[Donahue et~al\mbox{.}(2019)]%
+        {donahue2018wavegan}
+\bibfield{author}{\bibinfo{person}{Chris Donahue}, \bibinfo{person}{Julian
+  McAuley}, {and} \bibinfo{person}{Miller Puckette}.}
+  \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{Adversarial Audio Synthesis}. In
+  \bibinfo{booktitle}{\emph{International Conference on Learning
+  Representations (ICLR)}}.
+\newblock
+
+
+\bibitem[Esteban et~al\mbox{.}(2017)]%
+        {esteban2017rcgan}
+\bibfield{author}{\bibinfo{person}{Crist{\'o}bal Esteban},
+  \bibinfo{person}{Stephanie~L. Hyland}, {and} \bibinfo{person}{Gunnar
+  R{\"a}tsch}.} \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{Real-valued (Medical) Time Series Generation with
+  Recurrent Conditional {GANs}}. In \bibinfo{booktitle}{\emph{Advances in
+  Neural Information Processing Systems Workshop}}.
+\newblock
+\newblock
+\shownote{arXiv:1706.02633}.
+
+
+\bibitem[Fitts(1954)]%
+        {fitts1954information}
+\bibfield{author}{\bibinfo{person}{Paul~M. Fitts}.}
+  \bibinfo{year}{1954}\natexlab{}.
+\newblock \showarticletitle{The Information Capacity of the Human Motor System
+  in Controlling the Amplitude of Movement}.
+\newblock \bibinfo{journal}{\emph{Journal of Experimental Psychology}}
+  \bibinfo{volume}{47}, \bibinfo{number}{6} (\bibinfo{year}{1954}),
+  \bibinfo{pages}{381--391}.
+\newblock
+\href{https://doi.org/10.1037/h0055392}{doi:\nolinkurl{10.1037/h0055392}}
+
+
+\bibitem[Goodfellow et~al\mbox{.}(2014)]%
+        {goodfellow2014gan}
+\bibfield{author}{\bibinfo{person}{Ian Goodfellow}, \bibinfo{person}{Jean
+  Pouget-Abadie}, \bibinfo{person}{Mehdi Mirza}, \bibinfo{person}{Bing Xu},
+  \bibinfo{person}{David Warde-Farley}, \bibinfo{person}{Sherjil Ozair},
+  \bibinfo{person}{Aaron Courville}, {and} \bibinfo{person}{Yoshua Bengio}.}
+  \bibinfo{year}{2014}\natexlab{}.
+\newblock \showarticletitle{Generative Adversarial Nets}.
+\newblock \bibinfo{journal}{\emph{Advances in Neural Information Processing
+  Systems (NeurIPS)}} (\bibinfo{year}{2014}).
+\newblock
+
+
+\bibitem[Heusel et~al\mbox{.}(2017)]%
+        {heusel2017ttur}
+\bibfield{author}{\bibinfo{person}{Martin Heusel}, \bibinfo{person}{Hubert
+  Ramsauer}, \bibinfo{person}{Thomas Unterthiner}, \bibinfo{person}{Bernhard
+  Nessler}, {and} \bibinfo{person}{Sepp Hochreiter}.}
+  \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{{GANs} Trained by a Two Time-Scale Update Rule
+  Converge to a Local Nash Equilibrium}. In \bibinfo{booktitle}{\emph{Advances
+  in Neural Information Processing Systems (NeurIPS)}}.
+\newblock
+
+
+\bibitem[{hmmlearn developers}(2023)]%
+        {hmmlearn}
+\bibfield{author}{\bibinfo{person}{{hmmlearn developers}}.}
+  \bibinfo{year}{2023}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{hmmlearn: Hidden Markov Models in Python}}.
+\newblock
+\urldef\tempurl%
+\url{https://github.com/hmmlearn/hmmlearn}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Leinonen et~al\mbox{.}(2019)]%
+        {leinonen2019cs1}
+\bibfield{author}{\bibinfo{person}{Juho Leinonen}, \bibinfo{person}{Krista
+  Longi}, \bibinfo{person}{Arto Klami}, {and} \bibinfo{person}{Arto Hellas}.}
+  \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{Automatic Generation of Programming Exercises and
+  Code Explanations Using Large Language Models}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the ACM Technical Symposium on
+  Computer Science Education (SIGCSE)}}.
+\newblock
+\href{https://doi.org/10.1145/3287324.3287450}{doi:\nolinkurl{10.1145/3287324.3287450}}
+
+
+\bibitem[Leiva et~al\mbox{.}(2021)]%
+        {leiva2021typing}
+\bibfield{author}{\bibinfo{person}{Luis~A. Leiva}, \bibinfo{person}{Wenzhe
+  Shi}, {and} \bibinfo{person}{Antti Oulasvirta}.}
+  \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Building a Desktop Keyboard Layout for Efficient
+  Typing}. In \bibinfo{booktitle}{\emph{ACM CHI}}.
+\newblock
+
+
+\bibitem[Majaranta et~al\mbox{.}(2009)]%
+        {majaranta2009typing}
+\bibfield{author}{\bibinfo{person}{P{\"a}ivi Majaranta},
+  \bibinfo{person}{Ulla-Kaija Ahola}, {and} \bibinfo{person}{Oleg Sp{\"a}th}.}
+  \bibinfo{year}{2009}\natexlab{}.
+\newblock \showarticletitle{Fast Gaze Typing with an Adjustable Dwell Time}.
+\newblock \bibinfo{journal}{\emph{ACM CHI}} (\bibinfo{year}{2009}).
+\newblock
+
+
+\bibitem[Miyato et~al\mbox{.}(2018)]%
+        {miyato2018spectral}
+\bibfield{author}{\bibinfo{person}{Takeru Miyato}, \bibinfo{person}{Toshiki
+  Kataoka}, \bibinfo{person}{Masanori Koyama}, {and} \bibinfo{person}{Yuichi
+  Yoshida}.} \bibinfo{year}{2018}\natexlab{}.
+\newblock \showarticletitle{Spectral Normalization for Generative Adversarial
+  Networks}. In \bibinfo{booktitle}{\emph{International Conference on Learning
+  Representations (ICLR)}}.
+\newblock
+
+
+\bibitem[Pirkola et~al\mbox{.}(2021)]%
+        {pirkola2021cs1}
+\bibfield{author}{\bibinfo{person}{Paavo Pirkola}, \bibinfo{person}{Juho
+  Leinonen}, {and} \bibinfo{person}{Arto Hellas}.}
+  \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Predicting Academic Performance and Early Signs of
+  Academic Failure using Learning Data}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the Koli Calling International
+  Conference on Computing Education Research}}.
+\newblock
+
+
+\bibitem[Yoon et~al\mbox{.}(2019)]%
+        {yoon2019timegan}
+\bibfield{author}{\bibinfo{person}{Jinsung Yoon}, \bibinfo{person}{Daniel
+  Jarrett}, {and} \bibinfo{person}{Mihaela van~der Schaar}.}
+  \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{Time-series Generative Adversarial Networks}. In
+  \bibinfo{booktitle}{\emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}}.
+\newblock
+
+
+\end{thebibliography}

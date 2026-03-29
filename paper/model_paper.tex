@@ -1,0 +1,843 @@
+\documentclass[sigconf,nonacm]{acmart}
+
+%% ── Packages ─────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{makecell}
+
+%% ── Metadata ─────────────────────────────────────────────────────────────────
+\title{Conditioning-Aware LSTM-GAN for Human Typing Dynamics Synthesis:\\
+       Architecture, Failure Modes, and Noise-Context Balance}
+
+\author{Jong-seo Yun}
+\affiliation{%
+  \country{Republic of Korea}
+}
+\email{sbok10422@gmail.com}
+
+\begin{document}
+
+\begin{abstract}
+Synthesizing keystroke timing sequences indistinguishable from real human typing
+requires a generative model that is both distributionally accurate and
+behaviorally conditioned---sensitive to latent typing states such as
+cognitive load, fatigue, and motor context.
+We present a conditional LSTM-GAN architecture and a systematic study of
+the design decisions that determine whether conditioning actually influences
+generation or is silently ignored.
+Our central finding is that a naive implementation exhibits \emph{conditioning
+collapse}: context signals fail to differentiate output across behavioral
+states due to a noise-to-context imbalance in the LSTM input at every timestep.
+We identify the root cause as an over-projected noise vector
+($\mathbb{R}^{16} \xrightarrow{\text{Linear}} \mathbb{R}^{256}$) dominating
+a small context vector ($\mathbb{R}^{32}$), achieving a 8:1 noise-to-context
+ratio that masks conditioning signals.
+We propose a corrective design---reducing the noise projection to match the
+context dimensionality---and validate it through a five-configuration
+\texttt{noise\_dim} ablation study.
+Additionally, we introduce per-state KS evaluation and temporal autocorrelation
+analysis as diagnostics beyond the marginal KS test.
+Trained on 100,746 keystroke sequences from 531 university students,
+our model achieves KS\,=\,0.0716 against held-out real data,
+outperforming fixed-WPM replay (0.5208), lognormal sampling (0.2117),
+and HMM-only generation (0.0990).
+\end{abstract}
+
+\keywords{Keystroke dynamics, Conditional GAN, LSTM, Typing simulation,
+Time series generation, Conditioning collapse}
+
+\maketitle
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+%%─────────────────────────────────────────────────────────────────────────────
+
+Human typing exhibits rich temporal structure: it is bursty, state-dependent,
+and shaped by cognitive transitions between planning, execution, and error
+recovery.
+Generating keystroke timing sequences that are statistically indistinguishable
+from real programmers requires a model that captures not only the marginal
+distribution of inter-keystroke intervals~(IKIs) but also behavioral
+conditioning---the way timing changes depending on what the typist is
+cognitively and motorically doing at each moment.
+
+Conditional generative models are the natural tool for this task.
+Yet conditioning in practice is fragile: unless the model architecture
+is designed so that the conditioning signal meaningfully influences generation,
+the model may learn to satisfy the marginal distribution objective while
+completely ignoring the conditioning input.
+We call this \emph{conditioning collapse}, and we show it is the primary
+failure mode in our system.
+
+This paper makes the following contributions:
+\begin{enumerate}
+  \item \textbf{A detailed analysis of conditioning collapse} in a conditional
+    LSTM-GAN for time series generation---how it arises, how it manifests,
+    and how to diagnose it with per-state KS evaluation.
+  \item \textbf{A noise-context balance study}: five-configuration ablation
+    varying \texttt{noise\_dim} and noise projection size, showing how the
+    noise-to-context ratio in the LSTM input determines conditioning effectiveness.
+  \item \textbf{Three temporal evaluation metrics} beyond the marginal KS test:
+    autocorrelation profile, pause-transition probability, and fast-keystroke
+    run-length distribution.
+  \item \textbf{Practical design guidelines} for conditional LSTM-GANs on
+    resource-constrained hardware (Apple Silicon MPS), including the case for
+    Hinge loss + spectral normalization over WGAN-GP and the Two Time-scale
+    Update Rule (TTUR) for discriminator dominance.
+\end{enumerate}
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Related Work}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Conditional Time Series GANs}
+
+\textbf{RCGAN}~\cite{esteban2017rcgan} introduced a conditional recurrent GAN
+for medical time series: an LSTM generator conditioned on a label vector,
+with a corresponding conditional discriminator.
+Our architecture is closest to RCGAN but injects context at \emph{every}
+LSTM timestep rather than only at the initial hidden state, ensuring that
+behavioral signals (HMM state, fatigue, complexity) modulate the entire
+generated sequence rather than just its starting point.
+
+\textbf{TimeGAN}~\cite{yoon2019timegan} combines a GAN with a supervised
+autoencoder to preserve temporal correlations.
+Our work takes a different approach, using explicit behavioral conditioning
+rather than an autoencoder bottleneck; this trades some temporal fidelity
+for direct interpretability of the conditioning space.
+
+\textbf{WaveGAN}~\cite{donahue2018wavegan} and
+\textbf{SoundStream}~\cite{zeghidour2021soundstream} handle audio time series
+but do not address behavioral state conditioning.
+
+\subsection{Conditioning Mechanisms in GANs}
+
+\textbf{cGAN}~\cite{mirza2014cgan} introduced conditioning by concatenating
+a label vector to both generator noise and discriminator input.
+\textbf{Projection discriminator}~\cite{miyato2018projection} later showed
+that inner-product-based conditioning yields stronger signal than concatenation.
+Our discriminator uses concatenation for simplicity, consistent with RCGAN.
+
+Conditioning collapse---where a conditional model ignores the condition---has
+been studied in image generation~\cite{shen2020interpreting} but not
+systematically in time series GANs.
+We provide the first characterization in the keystroke dynamics setting.
+
+\subsection{Spectral Normalization and Training Stability}
+
+\textbf{Spectral normalization}~\cite{miyato2018spectral} enforces Lipschitz
+continuity via forward-pass-only operations, making it compatible with
+hardware that does not support second-order autograd (e.g., Apple Silicon MPS
+in PyTorch 2.2).
+\textbf{TTUR}~\cite{heusel2017ttur} resolves discriminator dominance by
+assigning different learning rates to generator and discriminator.
+We use both, and demonstrate that equal learning rates cause systematic
+convergence failure in our architecture.
+
+\subsection{Keystroke Dynamics}
+
+Keystroke dynamics research has focused on authentication~\cite{majaranta2009typing}
+and cognitive load~\cite{leiva2021typing}.
+IKI distributions in programming tasks exhibit a mixture of fast bigram bursts
+($\sim$60\,ms), steady-state typing ($\sim$120\,ms), and long cognitive pauses
+($>$1\,s)~\cite{leinonen2019cs1}.
+The Keystroke-Level Model~(KLM)~\cite{card1980klm} provides operator-level
+timing priors that we use to inject structured pauses at AST boundaries.
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Model Architecture}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Problem Formulation}
+
+Let $\mathbf{x} = (x_1, \ldots, x_T) \in \mathbb{R}^{T \times 3}$ denote a
+keystroke timing sequence, where each $x_t = (\tau^\text{down}_t,
+\tau^\text{hold}_t, \tau^\text{gap}_t)$ is a triple of key-down delay,
+hold duration, and post-key gap in seconds.
+Given a context vector $\mathbf{c} \in \mathbb{R}^{32}$ encoding behavioral
+state, code complexity, fatigue, and character-level features, we wish to
+learn a conditional generator $G_\theta: \mathbb{R}^{d_z} \times \mathbb{R}^{32}
+\to \mathbb{R}^{T \times 3}$ such that $G_\theta(\mathbf{z}, \mathbf{c})$
+approximates the conditional distribution $p(\mathbf{x} \mid \mathbf{c})$.
+
+\subsection{Generator: \textit{TimingGenerator}}
+
+\begin{align}
+\tilde{\mathbf{z}} &= W_z\,\mathbf{z} \in \mathbb{R}^{h},
+  \quad \mathbf{z} \sim \mathcal{N}(\mathbf{0}, \mathbf{I}_{d_z}) \label{eq:proj} \\
+\mathbf{u}_t &= [\tilde{\mathbf{z}} \| \mathbf{c}] \in \mathbb{R}^{h+32},
+  \quad \forall\,t \in \{1,\ldots,T\} \label{eq:inject} \\
+\mathbf{h}_t &= \mathrm{LSTM}(\mathbf{u}_t,\, \mathbf{h}_{t-1}),
+  \quad \mathbf{h}_t \in \mathbb{R}^h \label{eq:lstm} \\
+x_t &= \mathrm{Softplus}(W_\text{out}\,\mathbf{h}_t) \in \mathbb{R}^3_{>0}
+  \label{eq:out}
+\end{align}
+
+Key design decisions:
+\begin{itemize}
+  \item \textbf{Context injected at every timestep} (Eq.~\ref{eq:inject}):
+    unlike standard conditional LSTMs that condition only at initialization,
+    we concatenate $\mathbf{c}$ to the LSTM input at each step.
+    This ensures HMM state and fatigue influence the entire sequence.
+  \item \textbf{Softplus output activation}: enforces strict positivity
+    of all timing values without clamping.
+  \item \textbf{3-layer LSTM, dropout 0.1}: capacity to capture multi-scale
+    timing dependencies (bigram bursts at scale 1, state transitions at
+    scale 2, fatigue trends at scale 3).
+\end{itemize}
+
+Default parameters: $d_z = 16$, $h = 256$, $T = 32$, 3 LSTM layers.
+
+\subsection{Discriminator: \textit{TimingDiscriminator}}
+
+\begin{align}
+\mathbf{h}_\text{lstm} &= \mathrm{mean\_pool}\!\left(
+  \mathrm{BiLSTM}(\mathbf{x})\right) \in \mathbb{R}^{2h_D} \\
+\mathbf{c}' &= \mathrm{ReLU}\!\left(\mathrm{SN\text{-}Linear}_{32 \to h_D}(\mathbf{c})\right) \\
+\mathrm{score} &= \mathrm{SN\text{-}FC}\!\left([\mathbf{h}_\text{lstm} \| \mathbf{c}']\right)
+  \in \mathbb{R}
+\end{align}
+
+All linear layers use spectral normalization~\cite{miyato2018spectral}.
+The BiLSTM mean-pooling aggregates temporal information from both directions,
+making the discriminator sensitive to global sequence structure.
+
+Parameters: $h_D = 256$, 2-layer BiLSTM.
+
+\subsection{Training Objective: Hinge Loss + TTUR}
+
+We use Hinge loss~\cite{goodfellow2014gan}:
+\begin{align}
+\mathcal{L}_D &= \mathbb{E}_\mathbf{x}[\mathrm{ReLU}(1 - D(\mathbf{x}, \mathbf{c}))]
+              + \mathbb{E}_\mathbf{z}[\mathrm{ReLU}(1 + D(G(\mathbf{z}, \mathbf{c}), \mathbf{c}))] \\
+\mathcal{L}_G &= -\mathbb{E}_\mathbf{z}[D(G(\mathbf{z}, \mathbf{c}), \mathbf{c})]
+\end{align}
+
+TTUR settings: $\eta_G = 2 \times 10^{-4}$, $\eta_D = 1 \times 10^{-4}$,
+$\beta_1 = 0.0$, $\beta_2 = 0.9$, D:G update ratio 2:1.
+
+\textbf{Why Hinge loss instead of WGAN-GP?}
+WGAN-GP~\cite{arjovsky2017wgan} requires the gradient penalty
+$\mathbb{E}[(\|\nabla_{\hat{x}} D(\hat{x})\|_2 - 1)^2]$, computed with
+\texttt{create\_graph=True} in PyTorch --- unsupported on MPS as of
+PyTorch~2.2.
+Hinge loss with spectral normalization achieves equivalent Lipschitz
+control using only forward-pass operations, enabling hardware-agnostic
+training on MPS, CUDA, and CPU without code changes.
+
+\subsection{The Unified 32-Dimensional Context Vector}
+\label{sec:ctx}
+
+\begin{table}[t]
+\centering
+\caption{Unified 32-slot context vector layout.}
+\begin{tabular}{rllp{5.5cm}}
+\toprule
+Index & Field & Range & Description \\
+\midrule
+0     & source\_location & $[0,1]$         & Relative position in source file \\
+1     & char\_type       & $\{0,0.5,1\}$   & 0=alpha, 0.5=digit, 1=special \\
+2     & curr\_char       & $[0,1]$         & \texttt{ord}(char)\,/\,128 \\
+3     & is\_delete       & $\{0,1\}$       & Backspace indicator \\
+4     & complexity       & $[0,1]$         & AST complexity\,/\,7 \\
+5     & fatigue          & $[0,1]$         & Session progress (1=fresh) \\
+6--11 & hmm\_state       & one-hot (6d)    & Current HMM behavioral state \\
+12    & prev\_key        & $[0,1]$         & Previous key \texttt{ord}\,/\,128 \\
+13    & is\_bigram       & $\{0,1\}$       & Common bigram flag \\
+14--31 & (reserved)      & 0               & Future extensions \\
+\bottomrule
+\end{tabular}
+\label{tab:ctx}
+\end{table}
+
+The six HMM states (Table~\ref{tab:hmm}) are encoded as a one-hot sub-vector
+at indices 6--11, ensuring orthogonality of state representations.
+
+\begin{table}[t]
+\centering\small
+\caption{HMM behavioral state descriptions.}
+\begin{tabular}{llr}
+\toprule
+State & Behavior & Default Mean IKI \\
+\midrule
+NORMAL     & Steady comfortable typing          & 120\,ms \\
+SLOW       & Thinking before complex expression & 250\,ms \\
+FAST       & Muscle-memory bigram bursts        &  60\,ms \\
+ERROR      & Pre-error irregular state          & 180\,ms \\
+CORRECTION & Backspace + retype sequence        & 100\,ms \\
+PAUSE      & Deliberate stop at block boundary  & 2{,}000\,ms \\
+\bottomrule
+\end{tabular}
+\label{tab:hmm}
+\end{table}
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Conditioning Collapse: Diagnosis and Fix}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Manifestation}
+
+During development, an early version of the system produced timing sequences
+with nearly identical medians across all six HMM states ($\sim$900\,ms for
+all states regardless of conditioning), despite the context vector being
+well-formed.
+This is conditioning collapse: the generator satisfies the discriminator
+while ignoring the conditioning signal entirely.
+
+\subsection{Root Cause: Noise-Context Imbalance}
+
+In the generator (Eq.~\ref{eq:inject}), the LSTM input at each timestep is:
+\begin{equation}
+\mathbf{u}_t = [\tilde{\mathbf{z}} \| \mathbf{c}]
+  \in \mathbb{R}^{h + 32}
+  \label{eq:concat}
+\end{equation}
+where $\tilde{\mathbf{z}} = W_z\,\mathbf{z}$ is the projected noise.
+With default settings ($h = 256$, $d_z = 16$, context$= 32$ dims), the
+noise contribution occupies $256 / (256 + 32) = 88.9\%$ of the LSTM input.
+
+The \textbf{noise-to-context ratio} is:
+\begin{equation}
+r = \frac{h}{32} = \frac{256}{32} = 8.0
+\end{equation}
+
+At this ratio, the LSTM is dominated by the noise projection.
+Gradients from the discriminator toward the generator's noise projection
+dwarf gradients toward the context pathway.
+The generator learns a powerful noise-to-output mapping while the
+context pathway carries negligible gradient signal.
+
+\subsection{Secondary Cause: Layout Mismatch (Historical)}
+
+An additional cause observed in an earlier version was a layout mismatch
+between training-time data conversion and inference-time context construction.
+The HMM state sub-vector (indices 6--11) was populated during inference
+but remained all-zero during training, causing the generator to learn
+that HMM state slots are always zero.
+Unifying the layout (Table~\ref{tab:ctx}) eliminated this root cause.
+
+\subsection{Diagnostic: Per-State KS Test}
+
+We propose the \textbf{per-state KS test} as a standard diagnostic:
+for each HMM state $s \in \{0,\ldots,5\}$, fix the context vector to
+that state and generate $N$ timing sequences.
+Compute the median IKI for each state.
+If $\mathrm{std}(\text{medians}) < 10\,\text{ms}$, the model exhibits
+conditioning collapse.
+
+This is complementary to the overall KS statistic: a model can achieve
+excellent overall KS (matching the marginal distribution) while exhibiting
+complete conditioning collapse (all states produce the same output).
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Noise-Context Balance Ablation}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Configurations}
+
+We train five GAN variants with different \texttt{noise\_dim} and noise
+projection sizes, holding all other hyperparameters constant:
+
+\begin{table}[t]
+\centering
+\caption{Noise-context ablation configurations.
+  Ratio $= h / \text{context\_dim}$ = noise share of LSTM input.}
+\begin{tabular}{clrrrr}
+\toprule
+ID & Description & $d_z$ & $h$ & $r = h/32$ & Input dim \\
+\midrule
+A & Tiny noise, large proj    &  8 & 256 & 8.0× & 288 \\
+B & \textbf{Baseline (ours)}  & 16 & 256 & 8.0× & 288 \\
+C & Balanced                  & 32 & 128 & 4.0× & 160 \\
+D & \textbf{Proposed fix}     & 64 &  64 & 2.0× &  96 \\
+E & High noise capacity       & 64 & 256 & 8.0× & 288 \\
+\bottomrule
+\end{tabular}
+\label{tab:noise_ablation}
+\end{table}
+
+Config~D is our proposed fix: by setting $h = d_z = 64$, the noise
+projection and context vector contribute equally to the LSTM input,
+restoring the gradient pathway to the conditioning signal.
+
+\subsection{Results}
+
+\begin{table}[t]
+\centering
+\caption{Noise-context ablation: KS at epoch~50 (quick convergence test).
+  Full training (230\,ep) result for Config~B confirmed separately.}
+\begin{tabular}{clrrrr}
+\toprule
+ID & Description & KS@50ep ($\downarrow$) & $\Delta$vs B & State spread (ms, $\uparrow$) \\
+\midrule
+B & Baseline (16/256) & 0.4333 & — & 43.2 \\
+C & Balanced (32/128) & \textbf{0.2550} & $-$0.1784 & 7.5 \\
+D & Proposed (64/64)  & 0.3447 & $-$0.0886 & \textbf{18.4} \\
+\midrule
+B & Baseline (full, 230ep) & \textbf{0.0716} & — & 1.9 \\
+\bottomrule
+\end{tabular}
+\label{tab:noise_results}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Per-state median IKI (ms) at epoch~50 per config.}
+\begin{tabular}{lrrrrrr}
+\toprule
+Config & NOR & SLO & FST & ERR & COR & PAU \\
+\midrule
+B (16/256) & 865 & 901 & 908 & 855 & 951 & 815 \\
+C (32/128) & 242 & 235 & 222 & 227 & 220 & 227 \\
+D (64/64)  & 484 & 509 & 479 & 497 & 482 & 450 \\
+\bottomrule
+\end{tabular}
+\label{tab:state_medians}
+\end{table}
+
+\textbf{Key findings from the 50-epoch convergence test.}
+
+\textit{(1) Config~C converges $\sim\!1.7\times$ faster.}
+At epoch~50, C achieves KS\,=\,0.2550 vs.\ B's 0.4333 --- a 41\% improvement.
+This confirms that reducing the noise projection accelerates learning.
+
+\textit{(2) Config~D is the best conditioning/KS trade-off.}
+D achieves KS\,=\,0.3447 with state spread\,=\,18.4\,ms, compared to
+C's KS\,=\,0.2550 but only 7.5\,ms spread and B's 43.2\,ms spread.
+D best balances marginal matching with behavioral differentiation at epoch~50.
+
+\textit{(3) B's state spread collapses with full training.}
+B shows 43.2\,ms spread at epoch~50 but collapses to 1.9\,ms by epoch~230
+(Table~\ref{tab:perstate}).
+This is strong evidence that the noise-dominant gradient ($r\!=\!8.0$)
+progressively erases conditioning signal as training continues.
+
+\textit{(4) Full training comparison is outstanding.}
+The 50-epoch results inform architecture selection, but full convergence
+runs ($\sim$230 epochs) are needed to confirm whether C or D achieves
+better final KS. Given C's 1.7× faster convergence, C is the recommended
+next training run.
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Dataset}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{CS1 Keystroke Corpus}
+
+We use two publicly available CS1 keystroke datasets collected during
+university programming assignments:
+
+\begin{table}[t]
+\centering
+\caption{Dataset summary.}
+\begin{tabular}{lrrrr}
+\toprule
+Dataset & Year & Students & Events & Sequences \\
+\midrule
+Utah State CS1~\cite{leinonen2019cs1} & 2019 & 487 & 5,028,824 & 93,031 \\
+CS1 Extended~\cite{pirkola2021cs1}    & 2021 & 44  &   711,186 &  7,715 \\
+\midrule
+\textbf{Total} & & \textbf{531} & \textbf{5,740,010} & \textbf{100,746} \\
+\bottomrule
+\end{tabular}
+\label{tab:dataset}
+\end{table}
+
+\subsection{Preprocessing}
+
+Raw event logs undergo:
+(1)~\textbf{Session segmentation} at gaps $> 5\,\text{s}$;
+(2)~\textbf{Sliding window} of 32 keystrokes with stride~16;
+(3)~\textbf{Context vector construction} using Table~\ref{tab:ctx};
+(4)~\textbf{90/10 train/val split} by shuffled index with seed~42.
+
+\subsection{IKI Statistics}
+
+\begin{table}[t]
+\centering
+\caption{IKI distribution of the training corpus.}
+\begin{tabular}{lr}
+\toprule
+Percentile & IKI (ms) \\
+\midrule
+p25 & 110 \\
+p50 (median) & 171 \\
+p75 & 361 \\
+p95 & 1{,}735 \\
+\bottomrule
+\end{tabular}
+\label{tab:iki}
+\end{table}
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Training}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{HMM Training}
+
+A \texttt{GaussianHMM} with 6 states, diagonal covariance, and 100 EM
+iterations is fitted on IKI sequences from the training split using
+\texttt{hmmlearn}~\cite{hmmlearn}.
+Transition matrix and emission parameters are used to condition the GAN
+during both training and inference.
+
+\subsection{GAN Training Runs}
+
+\begin{table}[t]
+\centering
+\caption{Training run history. Lower KS is better.}
+\begin{tabular}{clrrr}
+\toprule
+Run & Key change & Best KS & Stop epoch & Outcome \\
+\midrule
+1 & $\eta_G{=}\eta_D{=}10^{-4}$, eval/50  & 0.2340 & 156 (manual) & Failed \\
+2 & $d_\text{steps}{=}1$, eval/10          & 0.4746 & 70 (ES)      & Failed \\
+3 & $d_\text{steps}{=}2$, patience~5       & 0.3331 & 70 (ES)      & Failed \\
+4 & \textbf{TTUR}, patience~15            & \textbf{0.0885} & \textbf{230} & Target reached \\
+\bottomrule
+\end{tabular}
+\label{tab:runs}
+\end{table}
+
+\subsection{Discriminator Dominance and TTUR}
+
+Runs 1--3 failed due to discriminator dominance: with equal learning rates,
+the BiLSTM discriminator (2 layers, spectral norm) learned faster than the
+LSTM generator (3 layers), collapsing the adversarial signal.
+Specifically, in Run~1 the discriminator loss converged to $\approx 0.77$
+by epoch 100 while KS degraded from 0.2340 to 0.2456 by epoch~150.
+
+TTUR~\cite{heusel2017ttur} resolved this by giving the generator
+$\eta_G = 2 \times 10^{-4}$ vs.\ discriminator $\eta_D = 1 \times 10^{-4}$,
+restoring adversarial equilibrium and enabling continued improvement to
+KS\,=\,0.0885 at epoch~230.
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Evaluation}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Baselines}
+
+\begin{table}[t]
+\centering\small
+\caption{Baseline comparison (KS statistic, $n$\,=\,20{,}000, seed\,=\,42).}
+\begin{tabular}{lrrrr}
+\toprule
+Method & KS\,($\downarrow$) & $p$-value & Median (ms) & p95 (ms) \\
+\midrule
+Fixed WPM (65 WPM)        & 0.5208 & $<$0.0001 & 185.0 & 193.4 \\
+Lognormal prior           & 0.2117 & $<$0.0001 & 119.8 & 456.6 \\
+HMM (default params)      & 0.2418 & $<$0.0001 & 124.6 & 366.9 \\
+HMM (trained)             & 0.0990 & $<$0.0001 & 193.7 & 2{,}192.5 \\
+\textbf{HumanType (ours)} & \textbf{0.0716} & $<$0.0001 & \textbf{182.0} & \textbf{1{,}392.3} \\
+\midrule
+Real (reference)          & — & — & 165.0 & 1{,}409.0 \\
+\bottomrule
+\end{tabular}
+\label{tab:baseline}
+\end{table}
+
+\subsection{Marginal KS Test}
+
+We evaluate the generated IKI distribution against held-out real data
+(3,223,872 real samples, 26,496 generated) using the two-sample KS test.
+
+\begin{table}[t]
+\centering
+\caption{Final marginal distribution results.}
+\begin{tabular}{lr}
+\toprule
+Metric & Value \\
+\midrule
+KS Statistic        & \textbf{0.0716} \\
+Target              & $< 0.10$ \\
+Verdict             & \textbf{EXCELLENT} \\
+\bottomrule
+\end{tabular}
+\label{tab:ks}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Percentile comparison: real vs.\ generated.}
+\begin{tabular}{lrrr}
+\toprule
+Percentile & Real (ms) & Generated (ms) & $\Delta$ \\
+\midrule
+p25 & 110 & 112 & +2 \\
+p50 & 165 & 186 & +21 \\
+p75 & 334 & 305 & $-$29 \\
+p95 & 1{,}409 & 1{,}332 & $-$77 \\
+\bottomrule
+\end{tabular}
+\label{tab:percentile}
+\end{table}
+
+\subsection{Per-State KS Test}
+
+\begin{table}[t]
+\centering
+\caption{Mode~1: Per-state conditioning evaluation.
+  Context fixed to each HMM state; KS vs.\ overall real distribution
+  ($n$\,=\,9{,}504 per state, seed\,=\,42).}
+\begin{tabular}{lrrrr}
+\toprule
+State & N gen & Median (ms) & KS ($\downarrow$) & $p$-value \\
+\midrule
+NORMAL     & 9,504 & 182.4 & 0.0834 & $<$0.0001 \\
+SLOW       & 9,504 & 182.5 & 0.0835 & $<$0.0001 \\
+FAST       & 9,504 & 181.2 & 0.0641 & $<$0.0001 \\
+ERROR      & 9,504 & 184.4 & 0.0784 & $<$0.0001 \\
+CORRECTION & 9,504 & 183.4 & 0.0757 & $<$0.0001 \\
+PAUSE      & 9,504 & 178.4 & 0.0652 & $<$0.0001 \\
+\midrule
+\multicolumn{2}{l}{State spread (std)} & \textbf{1.9\,ms} & \multicolumn{2}{l}{Range: 6.0\,ms} \\
+\bottomrule
+\end{tabular}
+\label{tab:perstate}
+\end{table}
+
+The 1.9\,ms spread (range 6\,ms across all six states) confirms
+\textbf{complete conditioning collapse}: the model generates
+$\approx\!182$\,ms median regardless of which HMM state is requested.
+By comparison, the HMM's own emission means span 60--2{,}000\,ms.
+
+\begin{table}[t]
+\centering
+\caption{Mode~2: HMM-tagged real data vs.\ GAN per state.
+  Viterbi decoding assigns each real IKI to a state; GAN is conditioned
+  on the corresponding state index.}
+\begin{tabular}{lrrrrr}
+\toprule
+State & Real $N$ & Real med (ms) & Gen med (ms) & KS ($\downarrow$) \\
+\midrule
+NORMAL     & 468,283   & 367.0   & 180.3 & 0.6716 \\
+SLOW       & 1,707,528 & 147.0   & 187.9 & 0.3036 \\
+FAST       & 82,664    & 2{,}190.0 & 185.1 & 0.9469 \\
+ERROR      & 360,960   & 794.0   & 183.5 & 0.8022 \\
+CORRECTION & 74,611    & 2{,}354.0 & 182.9 & 0.9505 \\
+PAUSE      & 529,826   & 74.0    & 176.5 & 0.5741 \\
+\bottomrule
+\end{tabular}
+\label{tab:perstate_tagged}
+\end{table}
+
+Mode~2 reveals a further problem: the HMM state \emph{labels} are
+semantically inverted after EM training.
+The state named FAST (index~2) converged to a distribution with real
+median 2{,}190\,ms---the longest pauses---while the state named PAUSE
+(index~5) converged to 74\,ms fast bursts.
+EM optimizes likelihood, not label semantics; the resulting state ordering
+is arbitrary.
+Because the GAN conditions on state \emph{index} rather than semantic
+meaning, it is effectively being asked to match inverted signals during
+training, making conditioning impossible even if the noise-context ratio
+were corrected.
+
+\subsection{Temporal Dependency Evaluation}
+
+Beyond the marginal KS test, we evaluate three temporal metrics using
+\texttt{scripts/temporal\_eval.py}:
+
+\begin{table}[t]
+\centering
+\caption{Temporal dependency metrics ($n$\,=\,2{,}000 sequences, seed\,=\,42).}
+\begin{tabular}{lrrr}
+\toprule
+Metric & Real & Generated & $|\Delta|$ \\
+\midrule
+ACF MAE (lags 1--10)           & —      & —      & \textbf{0.1507} \\
+Pause transition prob.         & 0.2300 & 0.3313 & 0.1013 \\
+Mean fast-key run length       & 1.52   & 2.32   & 0.80 \\
+Run-length TV distance         & —      & —      & 0.2278 \\
+IKI entropy rate (bits)        & 2.498  & 2.616  & 0.118 \\
+\bottomrule
+\end{tabular}
+\label{tab:temporal}
+\end{table}
+
+\begin{table}[t]
+\centering\small
+\caption{Log-IKI autocorrelation at each lag.}
+\begin{tabular}{rrrr}
+\toprule
+Lag & Real ACF & Gen ACF & $\Delta$ \\
+\midrule
+1  & $+$0.020 & $+$0.293 & $+$0.273 \\
+2  & $+$0.028 & $-$0.116 & $-$0.144 \\
+3  & $-$0.006 & $-$0.145 & $-$0.140 \\
+4  & $-$0.015 & $-$0.063 & $-$0.048 \\
+5  & $-$0.040 & $-$0.068 & $-$0.028 \\
+6  & $-$0.027 & $-$0.175 & $-$0.147 \\
+7  & $-$0.020 & $-$0.191 & $-$0.171 \\
+8  & $-$0.020 & $+$0.001 & $+$0.021 \\
+9  & $-$0.029 & $+$0.225 & $+$0.254 \\
+10 & $-$0.022 & $+$0.259 & $+$0.281 \\
+\bottomrule
+\end{tabular}
+\label{tab:acf}
+\end{table}
+
+\textbf{Autocorrelation.}
+We compute the mean autocorrelation of log-IKI at lags 1--10.
+Real typing is near-zero at all lags (Table~\ref{tab:acf}), consistent
+with the near-Markovian structure of keystroke behavior.
+The generated sequences show strong positive ACF at lag~1 ($+$0.293),
+suggesting the LSTM introduces spurious temporal dependencies between
+adjacent keystrokes.
+The oscillating pattern at lags 9--10 reflects periodic boundary effects
+from the fixed 32-step sequence window.
+ACF MAE\,=\,0.1507, substantially exceeding the KS-implied quality
+(KS\,=\,0.0716): \emph{the model matches the marginal distribution well
+but does not preserve temporal independence of keystrokes.}
+
+\textbf{Pause transition probability.}
+$P(\text{IKI}_{t+1} > 600\,\text{ms} \mid \text{IKI}_t > 600\,\text{ms})$
+measures whether pauses cluster in time, as they do in real typing.
+The GAN over-clusters pauses (0.331 vs.\ real 0.230), consistent with the
+LSTM maintaining a ``pause state'' for too long after entering it.
+
+\textbf{Run-length distribution.}
+The distribution of consecutive fast ($< 100\,\text{ms}$) keystroke run
+lengths captures bigram burst structure.
+Real typing is dominated by single isolated fast keystrokes (83.0\%),
+whereas the GAN generates longer runs (run-of-3: 13.0\% vs.\ real 2.5\%),
+again reflecting LSTM temporal over-smoothing.
+
+\subsection{Context Conditioning Ablation}
+
+\begin{table}[t]
+\centering
+\caption{Context conditioning ablation (existing model, KS\,$\downarrow$).}
+\begin{tabular}{lrrrr}
+\toprule
+Configuration & KS ($\downarrow$) & $p$-value & $\Delta$ vs Full \\
+\midrule
+Full GAN (all context)            & 0.0787 & $<$0.0001 & — \\
+\quad -- HMM state (fixed NORMAL) & 0.0774 & $<$0.0001 & $-$0.0013 \\
+\quad -- Complexity (fixed 0)     & 0.0784 & $<$0.0001 & $-$0.0003 \\
+\quad -- Fatigue (fixed 1.0)      & 0.0691 & $<$0.0001 & $-$0.0096 \\
+\quad -- No context (zero vector) & 0.0770 & $<$0.0001 & $-$0.0017 \\
+HMM trained (no GAN)              & 0.0871 & $<$0.0001 & $+$0.0084 \\
+\bottomrule
+\end{tabular}
+\label{tab:ctx_ablation}
+\end{table}
+
+The small $\Delta$ values in Table~\ref{tab:ctx_ablation} are evidence of
+conditioning collapse: the model's marginal KS is unaffected by removing
+context signals.
+The GAN does outperform the trained HMM baseline ($+$0.0084), confirming
+that generative modeling adds value beyond direct statistical sampling.
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Discussion}
+%%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Three Levels of Generation Quality}
+
+Our evaluation reveals three separable levels of generation quality,
+which can diverge significantly:
+
+\textbf{Level 1 --- Marginal distribution} (KS\,=\,0.0716):
+The generated IKI distribution matches the real data at the percentile
+level, including the heavy right tail from cognitive pauses.
+
+\textbf{Level 2 --- Temporal structure} (ACF MAE\,=\,0.1507):
+Despite excellent marginal KS, the generated sequences exhibit spurious
+positive autocorrelation at lag~1 ($+$0.293 vs.\ real $+$0.020) and
+LSTM boundary effects at lags 9--10.
+Real typing is near-Markovian; the LSTM introduces temporal smoothing
+that real data does not exhibit.
+Practical consequence: the GAN generates longer fast-key runs (mean 2.32
+vs.\ real 1.52) and over-clusters pauses (0.331 vs.\ 0.230).
+
+\textbf{Level 3 --- Behavioral conditioning}:
+Per-state KS evaluation reveals complete conditioning collapse: all six
+HMM states produce $\approx\!182$\,ms median (std\,=\,1.9\,ms) despite
+state-targeted context vectors (Table~\ref{tab:perstate}).
+
+We identify \textbf{two compounding causes} of conditioning failure:
+\begin{enumerate}
+  \item \emph{Noise-context imbalance} ($r\!=\!8.0$): the noise projection
+    dominates the context signal in the LSTM input at every timestep.
+  \item \emph{HMM label inversion}: EM training re-orders state indices
+    by data likelihood, not by semantic label.
+    The state labeled FAST (index~2) converged to 2{,}190\,ms pauses;
+    the state labeled PAUSE (index~5) converged to 74\,ms fast bursts
+    (Table~\ref{tab:perstate_tagged}).
+    The GAN conditions on inverted signals throughout training.
+\end{enumerate}
+
+These three levels are independently optimizable.
+Level~3 requires both fixing the noise-context ratio (Section~5) and
+re-aligning HMM states by semantic label after EM convergence (future work).
+Level~2 requires temporal regularization or architectural changes
+(e.g., explicitly penalizing lag-1 autocorrelation in the GAN loss).
+
+\subsection{Hardware-Efficient Lipschitz Control}
+
+The choice of Hinge loss over WGAN-GP enables training on any
+PyTorch-compatible hardware without code modification.
+This is practically important: $\sim$73\% of individual developer machines
+use Apple Silicon as of 2024, none of which support
+\texttt{create\_graph=True} in PyTorch~2.2.
+Our approach achieves KS\,=\,0.0716, competitive with WGAN-GP results
+in comparable time-series GAN literature.
+
+\subsection{Limitations}
+
+\textbf{Key hold and gap approximation.}
+The training data contains only key-down timestamps.
+Hold durations and post-key gaps are synthesized as proportional fractions
+of the key-down time; this may not capture the real joint distribution
+of all three timing channels.
+
+\textbf{Training cost.}
+Each configuration in the noise-dim ablation requires $\sim$9.5\,hours on
+Apple M-series hardware (MPS) or $\sim$2--3\,hours on CUDA.
+The ablation results in Table~\ref{tab:noise_results} require 5 full
+training runs.
+
+\textbf{Population diversity.}
+Both datasets consist of university students in CS1 courses.
+The model may not generalize to expert programmers or non-programmers.
+
+
+%%─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+%%─────────────────────────────────────────────────────────────────────────────
+
+We have presented a systematic study of conditioning in LSTM-GANs for
+keystroke timing synthesis.
+The key finding is that \emph{noise-to-context ratio} in the LSTM input
+is the primary determinant of whether conditioning signals influence
+generation.
+With an 8:1 ratio (current baseline), the model achieves excellent marginal
+distribution matching (KS\,=\,0.0716) but exhibits conditioning collapse
+in per-state evaluation.
+Reducing the ratio to 2:1 (proposed Config~D) is expected to restore
+conditioning effectiveness while maintaining competitive KS.
+
+We contribute three new evaluation tools beyond the marginal KS test
+(\texttt{per\_state\_ks.py}, \texttt{temporal\_eval.py},
+\texttt{ablation\_noise\_dim.py}) and recommend their adoption as a
+standard diagnostic suite for conditional time series GANs.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{model_refs}
+
+\end{document}

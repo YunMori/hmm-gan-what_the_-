@@ -4,7 +4,6 @@
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{amsmath}
-\usepackage{amssymb}
 \usepackage{microtype}
 \usepackage{xcolor}
 \usepackage{listings}
@@ -15,13 +14,11 @@
 \title{HumanType: A Four-Layer Pipeline for Synthesizing\\
        Human-Like Keystroke Dynamics in AI-Generated Code}
 
-\author{[Author Name]}
+\author{Jong-seo Yun}
 \affiliation{%
-  \institution{[Institution]}
-  \city{[City]}
-  \country{[Country]}
+  \country{Republic of Korea}
 }
-\email{[email@example.com]}
+\email{sbok10422@gmail.com}
 
 \begin{document}
 
@@ -149,7 +146,7 @@ normalization~\cite{miyato2018spectral} throughout the discriminator.
 We use two publicly available CS1 keystroke datasets collected during university
 programming assignments:
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Dataset summary.}
 \begin{tabular}{lrrrr}
@@ -177,7 +174,7 @@ vector is constructed using the unified layout described in Section~\ref{sec:ctx
 
 \subsection{IKI Statistics}
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{IKI distribution of the training corpus.}
 \begin{tabular}{lr}
@@ -199,35 +196,34 @@ Sequences are split 90/10 by index shuffling with a fixed seed~(42): 90,672 sequ
 for training, 10,074 for validation. The validation set is used exclusively for KS
 evaluation during training and never influences gradient updates.
 
-
 %%─────────────────────────────────────────────────────────────────────────────
 \section{System Architecture}
 %%─────────────────────────────────────────────────────────────────────────────
 
 The HumanType pipeline consists of four layers, each independently replaceable.
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
 \begin{verbatim}
 Input Code String
-       │
-┌──────────────────────────────┐
-│ Layer 1 · Code Buffer        │
-│ Language detection, analysis │
-├──────────────────────────────┤
-│ Layer 2 · AST Scheduling     │
-│ Tree-sitter → Complexity     │
-│ → KLM pause → NonlinearRoute │
-├──────────────────────────────┤
-│ Layer 3 · Dynamics Synthesis │
-│ HMM states → GAN timing      │
-│ + Fitts + Bigram + Fatigue   │
-│ + Error + Correction         │
-├──────────────────────────────┤
-│ Layer 4 · Injection          │
-│ Desktop / Web / JSON output  │
-└──────────────────────────────┘
-       │
+       |
++--------------------------------+
+| Layer 1 . Code Buffer          |
+| Language detection, analysis   |
++--------------------------------+
+| Layer 2 . AST Scheduling       |
+| Tree-sitter -> Complexity      |
+| -> KLM pause -> NonlinearRoute |
++--------------------------------+
+| Layer 3 . Dynamics Synthesis   |
+| HMM states -> GAN timing       |
+| + Fitts + Bigram + Fatigue     |
+| + Error + Correction           |
++--------------------------------+
+| Layer 4 . Injection            |
+| Desktop / Web / JSON output    |
++--------------------------------+
+       |
 KeystrokeEvent[] + Stats
 \end{verbatim}
 \caption{Four-layer pipeline architecture.}
@@ -248,7 +244,7 @@ carrying a text fragment and a recommended inter-segment pause.
 \textbf{Complexity classification.} Tree-sitter parses the code into an AST. Each node is
 assigned a complexity level (1--7) based on node type:
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{KLM operator values and complexity-to-pause mapping.}
 \begin{tabular}{lrr}
@@ -278,8 +274,8 @@ non-monotonic cursor movement characteristic of real programming sessions.
 A 6-state \texttt{GaussianHMM} models the latent behavioral state underlying the
 typing sequence:
 
-\begin{table}[h]
-\centering
+\begin{table}[t]
+\centering\small
 \caption{HMM state behavioral descriptions.}
 \begin{tabular}{llr}
 \toprule
@@ -308,7 +304,7 @@ $\mathbf{c} \in \mathbb{R}^{32}$ to a sequence of timing triples:
 \begin{align*}
 \mathbf{z} &\xrightarrow{\text{Linear}(16 \to 256)} \tilde{\mathbf{z}} \in \mathbb{R}^{256} \\
 [\tilde{\mathbf{z}} \| \mathbf{c}]_{t=1}^{T} &\xrightarrow{\text{LSTM}(3\text{ layers}, h{=}256)}
-\xrightarrow{\text{Linear}(256 \to 3)} \xrightarrow{\text{Softplus}} \hat{\mathbf{x}} \in \mathbb{R}^{T \times 3}
+  \xrightarrow{\text{Linear}(256 \to 3)} \xrightarrow{\text{Softplus}} \hat{\mathbf{x}} \in \mathbb{R}^{T \times 3}
 \end{align*}
 Context $\mathbf{c}$ is concatenated to the projected noise at \emph{every} LSTM
 timestep, ensuring that HMM state and fatigue signals modulate the entire generated
@@ -329,8 +325,8 @@ Lipschitz continuity without gradient penalty computation (cf.\ Section~\ref{sec
 
 \textbf{Training objective.} We use Hinge loss~\cite{goodfellow2014gan}:
 \begin{align}
-\mathcal{L}_D &= \mathbb{E}[\text{ReLU}(1 - D(\mathbf{x}, \mathbf{c}))]
-               + \mathbb{E}[\text{ReLU}(1 + D(G(\mathbf{z}, \mathbf{c}), \mathbf{c}))] \\
+\mathcal{L}_D &= \mathbb{E}[\text{ReLU}(1 - D(\mathbf{x}, \mathbf{c}))] \notag \\
+              &\quad + \mathbb{E}[\text{ReLU}(1 + D(G(\mathbf{z}, \mathbf{c}), \mathbf{c}))] \\
 \mathcal{L}_G &= -\mathbb{E}[D(G(\mathbf{z}, \mathbf{c}), \mathbf{c})]
 \end{align}
 
@@ -344,10 +340,10 @@ $\beta_1 = 0.0$, $\beta_2 = 0.9$, batch size~64, $D:G$ update ratio~2:1.
 A key design decision is the \emph{unified} context layout, identical during both
 training-time data conversion and inference-time synthesis:
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
 \caption{Full 32-slot context vector specification.}
-\begin{tabular}{rllp{4.5cm}}
+\begin{tabular}{rllp{7cm}}
 \toprule
 Index & Field & Range & Description \\
 \midrule
@@ -364,7 +360,7 @@ Index & Field & Range & Description \\
 \bottomrule
 \end{tabular}
 \label{tab:ctx}
-\end{table}
+\end{table*}
 
 An earlier version maintained separate layouts in the data conversion module and the
 inference module. The mismatch caused HMM state slots (indices 6--11) to be zero during
@@ -429,14 +425,14 @@ CUDA, and CPU without loss of generation quality.
 Setting $\eta_G = 2 \times 10^{-4}$ and $\eta_D = 1 \times 10^{-4}$ prevents
 discriminator dominance: a faster-learning discriminator overwhelms the generator,
 collapsing generation quality. With equal learning rates ($10^{-4}$ for both), D loss
-dropped to $\approx$0.77 by epoch 100 while KS degraded from 0.2340 to 0.2456 by
+dropped to ${\approx}\,0.77$ by epoch 100 while KS degraded from 0.2340 to 0.2456 by
 epoch~150.
 
 \textbf{Early stopping.}
 KS is evaluated every 10 epochs on the validation set. Training stops when KS $<$ 0.10
 or when KS fails to improve for 15 consecutive evaluations (150-epoch patience).
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
 \caption{Training run history.}
 \begin{tabular}{clrrr}
@@ -450,9 +446,9 @@ Run & Key configuration & Best KS & Stop epoch & Outcome \\
 \bottomrule
 \end{tabular}
 \label{tab:training_runs}
-\end{table}
+\end{table*}
 
-\begin{figure}[h]
+\begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/fig8_training_curve.pdf}
   \caption{GAN training dynamics (Run~4, TTUR). Top: G/D Hinge losses.
@@ -479,8 +475,8 @@ sampling from the HMM state parameters (Table~\ref{tab:hmm_states}).
 We compare HumanType against four baselines representing increasingly realistic
 generation strategies:
 
-\begin{table}[h]
-\centering
+\begin{table}[t]
+\centering\small
 \caption{Baseline comparison (KS statistic, $n$\,=\,20{,}000, seed\,=\,42). Lower KS is better ($\downarrow$).}
 \begin{tabular}{lrrrr}
 \toprule
@@ -490,7 +486,7 @@ Fixed WPM (65 WPM)        & 0.5208 & $<$0.0001 & 185.0 & 193.4 \\
 Lognormal prior           & 0.2117 & $<$0.0001 & 119.8 & 456.6 \\
 HMM (default params)      & 0.2418 & $<$0.0001 & 124.6 & 366.9 \\
 HMM (trained)             & 0.0990 & $<$0.0001 & 193.7 & 2{,}192.5 \\
-\textbf{HumanType (ours)} & \textbf{0.0758} & $<$0.0001 & \textbf{182.0} & \textbf{1{,}392.3} \\
+\textbf{HumanType (ours)} & \textbf{0.0716} & $<$0.0001 & \textbf{182.0} & \textbf{1{,}392.3} \\
 \midrule
 Real (reference)          & — & — & 165.0 & 1{,}409.0 \\
 \bottomrule
@@ -504,7 +500,7 @@ We evaluate the generated IKI distribution against held-out real data using the
 two-sample Kolmogorov-Smirnov test. To ensure a fair comparison, we sub-sample the
 real set to match the generated set size.
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Final benchmark results.}
 \begin{tabular}{lr}
@@ -521,17 +517,17 @@ Verdict             & \textbf{EXCELLENT} \\
 \label{tab:ks}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure*}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/fig9_iki_cdf.pdf}
+  \includegraphics[width=\textwidth]{figures/fig9_iki_cdf.pdf}
   \caption{Cumulative distribution functions of real (blue) and HumanType-generated
     (orange) inter-keystroke intervals. Log-scale x-axis reveals agreement across
     both fast bigram bursts ($\sim$20--100\,ms) and long cognitive pauses
     ($>$1{,}000\,ms). KS\,=\,0.0716.}
   \label{fig:cdf}
-\end{figure}
+\end{figure*}
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \caption{Percentile comparison: real vs.\ generated.}
 \begin{tabular}{lrrr}
@@ -555,30 +551,30 @@ is individually disabled, using a fixed random seed (42) for reproducibility.
 Error and correction engine evaluation uses event-level metrics rather than KS,
 since error injection affects event composition but not the IKI distribution directly.
 
-\begin{table}[h]
+\begin{table*}[t]
 \centering
 \caption{GAN context conditioning ablation (KS\,$\downarrow$, seed\,=\,42).
   All configurations achieve the EXCELLENT threshold (KS\,$<$\,0.10).}
-\begin{tabular}{lrrr}
+\begin{tabular}{lrrrr}
 \toprule
-Configuration & KS\,($\downarrow$) & $p$-value & $\Delta$ vs Full \\
+Configuration & KS\,($\downarrow$) & $p$-value & $\Delta$ vs Full & Note \\
 \midrule
-Full GAN (all context)                 & \textbf{0.0787} & $<$0.0001 & — \\
-\quad -- HMM state (fixed NORMAL)      & 0.0774 & $<$0.0001 & $-$0.0013 \\
-\quad -- Complexity (fixed 0)          & 0.0784 & $<$0.0001 & $-$0.0003 \\
-\quad -- Fatigue (fixed 1.0)           & 0.0691 & $<$0.0001 & $-$0.0096 \\
-\quad -- No context (zero vector)      & 0.0770 & $<$0.0001 & $-$0.0017 \\
-HMM trained (no GAN)                  & 0.0871 & $<$0.0001 & $+$0.0084 \\
+Full GAN (all context)            & \textbf{0.0787} & $<$0.0001 & — & \\
+\quad -- HMM state (fixed NORMAL) & 0.0774 & $<$0.0001 & $-$0.0013 & \\
+\quad -- Complexity (fixed 0)     & 0.0784 & $<$0.0001 & $-$0.0003 & \\
+\quad -- Fatigue (fixed 1.0)      & 0.0691 & $<$0.0001 & $-$0.0096 & \\
+\quad -- No context (zero vector) & 0.0770 & $<$0.0001 & $-$0.0017 & \\
+HMM trained (no GAN)              & 0.0871 & $<$0.0001 & $+$0.0084 & \\
 \midrule
-\multicolumn{4}{l}{\textit{Error Engine (event-level, not KS)}} \\
-Full pipeline      & \multicolumn{3}{l}{2.00\% error rate / 2.00 corrections per 100 keys} \\
-No error/correction & \multicolumn{3}{l}{0.00\% / 0.00} \\
+\multicolumn{5}{l}{\textit{Error Engine (event-level, not KS)}} \\
+Full pipeline       & — & — & — & 2.00\% error rate;\ 2.00 corrections/100\,keys \\
+No error/correction & — & — & — & 0.00\% error rate;\ 0.00 corrections/100\,keys \\
 \bottomrule
 \end{tabular}
 \label{tab:ablation}
-\end{table}
+\end{table*}
 
-\noindent\textbf{Finding.} The GAN's marginal distribution matching is robust to context
+\textbf{Finding.} The GAN's marginal distribution matching is robust to context
 variations: all GAN configurations remain within the EXCELLENT KS range ($<$0.10).
 Notably, removing context conditioning does not degrade KS, which is consistent with the
 weak per-state median differentiation observed in Section~\ref{sec:ablation}
@@ -590,13 +586,13 @@ confirming the value of generative modeling over direct statistical sampling.
 
 Figure~\ref{fig:boxplot} shows the distribution of generated IKI per HMM state.
 
-\begin{figure}[h]
+\begin{figure*}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/fig10_state_boxplot.pdf}
+  \includegraphics[width=\textwidth]{figures/fig10_state_boxplot.pdf}
   \caption{Box plots of GAN-generated IKI conditioned on each of the six HMM behavioral
     states. Dashed blue line indicates the real-data median.}
   \label{fig:boxplot}
-\end{figure}
+\end{figure*}
 
 While the overall IKI distribution matches well (KS\,=\,0.0716), per-state median
 variation is limited ($\sim$179--187\,ms across all states).
@@ -613,8 +609,8 @@ We discuss this limitation and its cause in Section~\ref{sec:limit}.
 The choice of Hinge loss over WGAN-GP was motivated by the goal of \emph{hardware
 universality and deployment efficiency}.
 WGAN-GP's gradient penalty requires second-order autograd operations
-(\texttt{create\_graph=True}) that are not supported on resource-constrained accelerators
-including Apple Silicon MPS and many edge-inference devices.
+(\texttt{create\_graph=True}) that are not supported on resource-constrained
+accelerators including Apple Silicon MPS and many edge-inference devices.
 By combining spectral normalization~\cite{miyato2018spectral} with Hinge
 loss~\cite{goodfellow2014gan}, we enforce Lipschitz continuity entirely via forward-pass
 operations, enabling training and inference on any PyTorch-compatible hardware without
@@ -639,11 +635,11 @@ equilibrium.
 \textbf{State-conditional differentiation.}
 The generated timing shows limited per-state variation
 (medians within $\sim$8\,ms of each other), despite the conditioning architecture.
-We attribute this primarily to the \texttt{noise\_dim\,=\,16} bottleneck: with
-\texttt{context\_dim\,=\,32} and a 256-dimensional noise projection, the LSTM input
+We attribute this primarily to the \texttt{noise\_dim=16} bottleneck: with
+\texttt{context\_dim=32} and a 256-dimensional noise projection, the LSTM input
 is dominated by the high-dimensional noise at each timestep, diluting the context's
 relative influence.
-Increasing noise\_dim to 64 while reducing the hidden projection would restore
+Increasing \texttt{noise\_dim} to 64 while reducing the hidden projection would restore
 the signal-to-noise balance in favor of the context vector; we leave this as future work.
 
 \textbf{Key hold and gap approximation.}
@@ -710,6 +706,6 @@ See Table~\ref{tab:ctx} in Section~\ref{sec:ctx}.
 
 Default prior transition matrix initial state probability:
 NORMAL\,=\,0.60, SLOW\,=\,0.15, FAST\,=\,0.10, ERROR\,=\,0.05,
-CORRECTION\,=\,0.05, PAUSE\,=\,0.05.
+CORRECTION\,=\,0.05,\\ PAUSE\,=\,0.05.
 
 \end{document}

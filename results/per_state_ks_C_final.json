@@ -1,0 +1,60 @@
+{
+  "seed": 42,
+  "model_dir": "models",
+  "data": "data/raw/keystroke_samples.jsonl",
+  "n_real_total": 3223872,
+  "n_samples_per_state": 300,
+  "conditioning_results": [
+    {
+      "state": "NORMAL",
+      "state_idx": 0,
+      "n_generated": 9504,
+      "median_ms": 203.72994995117188,
+      "ks": 0.17918771043771045,
+      "p": 1.1528789355075752e-133
+    },
+    {
+      "state": "SLOW",
+      "state_idx": 1,
+      "n_generated": 9504,
+      "median_ms": 187.7576904296875,
+      "ks": 0.16340488215488216,
+      "p": 3.991988685193378e-111
+    },
+    {
+      "state": "FAST",
+      "state_idx": 2,
+      "n_generated": 9504,
+      "median_ms": 235.7838897705078,
+      "ks": 0.16940235690235692,
+      "p": 1.9306597718974487e-119
+    },
+    {
+      "state": "ERROR",
+      "state_idx": 3,
+      "n_generated": 9504,
+      "median_ms": 193.78134155273438,
+      "ks": 0.18697390572390574,
+      "p": 1.4472636263427354e-145
+    },
+    {
+      "state": "CORRECTION",
+      "state_idx": 4,
+      "n_generated": 9504,
+      "median_ms": 193.73745727539062,
+      "ks": 0.14888468013468015,
+      "p": 2.959623669794292e-92
+    },
+    {
+      "state": "PAUSE",
+      "state_idx": 5,
+      "n_generated": 9504,
+      "median_ms": 199.80828857421875,
+      "ks": 0.16982323232323232,
+      "p": 4.905596370391649e-120
+    }
+  ],
+  "state_spread_std_ms": 15.741036633661434,
+  "state_spread_range_ms": 48.02619934082031,
+  "tagging_results": []
+}

@@ -1,0 +1,87 @@
+This is BibTeX, Version 0.99e (TeX Live 2026)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: main.aux
+The style file: ACM-Reference-Format.bst
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
+Database file #1: refs.bib
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 9000 items from 6000.
+Reallocated glb_str_ptr (elt_size=4) to 20 items from 10.
+Reallocated global_strs (elt_size=200001) to 20 items from 10.
+Reallocated glb_str_end (elt_size=4) to 20 items from 10.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Warning--empty publisher in arjovsky2017wgan
+Warning--empty address in arjovsky2017wgan
+Warning--page numbers missing in both pages and numpages fields in arjovsky2017wgan
+Warning--empty publisher in donahue2018wavegan
+Warning--empty address in donahue2018wavegan
+Warning--page numbers missing in both pages and numpages fields in donahue2018wavegan
+Warning--empty publisher in esteban2017rcgan
+Warning--empty address in esteban2017rcgan
+Warning--page numbers missing in both pages and numpages fields in esteban2017rcgan
+Warning--no number and no volume in goodfellow2014gan
+Warning--page numbers missing in both pages and numpages fields in goodfellow2014gan
+Warning--empty publisher in heusel2017ttur
+Warning--empty address in heusel2017ttur
+Warning--page numbers missing in both pages and numpages fields in heusel2017ttur
+Warning--empty publisher in leinonen2019cs1
+Warning--empty address in leinonen2019cs1
+Warning--page numbers missing in both pages and numpages fields in leinonen2019cs1
+Warning--empty publisher in leiva2021typing
+Warning--empty address in leiva2021typing
+Warning--page numbers missing in both pages and numpages fields in leiva2021typing
+Warning--no number and no volume in majaranta2009typing
+Warning--page numbers missing in both pages and numpages fields in majaranta2009typing
+Warning--empty publisher in miyato2018spectral
+Warning--empty address in miyato2018spectral
+Warning--page numbers missing in both pages and numpages fields in miyato2018spectral
+Warning--empty publisher in pirkola2021cs1
+Warning--empty address in pirkola2021cs1
+Warning--page numbers missing in both pages and numpages fields in pirkola2021cs1
+Warning--empty publisher in yoon2019timegan
+Warning--empty address in yoon2019timegan
+Warning--page numbers missing in both pages and numpages fields in yoon2019timegan
+You've used 15 entries,
+            6273 wiz_defined-function locations,
+            1588 strings with 20826 characters,
+and the built_in function-call counts, 15152 in all, are:
+= -- 1667
+> -- 509
+< -- 0
++ -- 170
+- -- 163
+* -- 1083
+:= -- 1448
+add.period$ -- 65
+call.type$ -- 15
+change.case$ -- 108
+chr.to.int$ -- 15
+cite$ -- 46
+duplicate$ -- 1444
+empty$ -- 1023
+format.name$ -- 211
+if$ -- 3625
+int.to.chr$ -- 2
+int.to.str$ -- 1
+missing$ -- 61
+newline$ -- 161
+num.names$ -- 105
+pop$ -- 699
+preamble$ -- 1
+purify$ -- 228
+quote$ -- 0
+skip$ -- 510
+stack$ -- 0
+substring$ -- 905
+swap$ -- 89
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 394
+warning$ -- 31
+while$ -- 63
+width$ -- 0
+write$ -- 310
+(There were 31 warnings)

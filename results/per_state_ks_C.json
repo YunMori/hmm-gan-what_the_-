@@ -1,0 +1,60 @@
+{
+  "seed": 42,
+  "model_dir": "models",
+  "data": "data/raw/keystroke_samples.jsonl",
+  "n_real_total": 3223872,
+  "n_samples_per_state": 300,
+  "conditioning_results": [
+    {
+      "state": "NORMAL",
+      "state_idx": 0,
+      "n_generated": 9504,
+      "median_ms": 336.10345458984375,
+      "ks": 0.28188131313131315,
+      "p": 1e-323
+    },
+    {
+      "state": "SLOW",
+      "state_idx": 1,
+      "n_generated": 9504,
+      "median_ms": 349.7790222167969,
+      "ks": 0.2996632996632997,
+      "p": 1e-323
+    },
+    {
+      "state": "FAST",
+      "state_idx": 2,
+      "n_generated": 9504,
+      "median_ms": 345.12115478515625,
+      "ks": 0.3100799663299663,
+      "p": 1e-323
+    },
+    {
+      "state": "ERROR",
+      "state_idx": 3,
+      "n_generated": 9504,
+      "median_ms": 333.7578125,
+      "ks": 0.29692760942760943,
+      "p": 1e-323
+    },
+    {
+      "state": "CORRECTION",
+      "state_idx": 4,
+      "n_generated": 9504,
+      "median_ms": 330.53790283203125,
+      "ks": 0.2894570707070707,
+      "p": 1e-323
+    },
+    {
+      "state": "PAUSE",
+      "state_idx": 5,
+      "n_generated": 9504,
+      "median_ms": 317.25616455078125,
+      "ks": 0.29471801346801346,
+      "p": 1e-323
+    }
+  ],
+  "state_spread_std_ms": 10.466482069411493,
+  "state_spread_range_ms": 32.522857666015625,
+  "tagging_results": []
+}
