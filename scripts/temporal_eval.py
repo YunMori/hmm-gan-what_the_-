@@ -184,7 +184,9 @@ def _run_dist_tv(real_dist: dict, gen_dist: dict) -> float:
               help="Override hidden_size for model architecture.")
 @click.option("--checkpoint", default=None, show_default=True,
               help="Override checkpoint path (default: model_dir/gan_generator_best.pth).")
-def main(model_dir, data, n_seqs, output, noise_dim, hidden_size, checkpoint):
+@click.option("--step-noise-scale", default=0.0, type=float, show_default=True,
+              help="Per-step noise scale for TimingGenerator (Config D).")
+def main(model_dir, data, n_seqs, output, noise_dim, hidden_size, checkpoint, step_noise_scale):
     import yaml
     config = {}
     if Path("config.yaml").exists():
@@ -196,6 +198,7 @@ def main(model_dir, data, n_seqs, output, noise_dim, hidden_size, checkpoint):
         gan_config["noise_dim"] = noise_dim
     if hidden_size is not None:
         gan_config["hidden_size"] = hidden_size
+    gan_config["step_noise_scale"] = step_noise_scale
 
     ckpt_path = checkpoint if checkpoint else f"{model_dir}/gan_generator_best.pth"
 

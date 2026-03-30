@@ -62,8 +62,9 @@ CONFIGS = [
     {"name": "A: noise=8,  proj=256", "noise_dim": 8,  "hidden_size": 256, "ratio": "8.0x"},
     {"name": "B: noise=16, proj=256", "noise_dim": 16, "hidden_size": 256, "ratio": "8.0x (baseline)"},
     {"name": "C: noise=32, proj=128", "noise_dim": 32, "hidden_size": 128, "ratio": "4.0x"},
-    {"name": "D: noise=64, proj=64",  "noise_dim": 64, "hidden_size": 64,  "ratio": "2.0x (proposed)"},
+    {"name": "D: noise=64, proj=64, nl=2+sn", "noise_dim": 64, "hidden_size": 64, "ratio": "2.0x+step_noise", "num_layers": 2, "step_noise_scale": 0.3},
     {"name": "E: noise=64, proj=256", "noise_dim": 64, "hidden_size": 256, "ratio": "8.0x (more noise)"},
+    {"name": "F: noise=64, proj=64, nl=2",    "noise_dim": 64, "hidden_size": 64, "ratio": "2.0x",           "num_layers": 2, "step_noise_scale": 0.0},
 ]
 
 
@@ -102,7 +103,7 @@ def _compute_ks(G, noise_dim: int, device, real_delays: np.ndarray,
 
 
 def _compute_acf_mae(G, noise_dim: int, device, real_seqs: list,
-                     max_lag: int = 5, n_gen: int = 300) -> float:
+                     max_lag: int = 10, n_gen: int = 300) -> float:
     """
     ACF MAE: log-IKI autocorrelation at lags 1..max_lag, real vs generated.
     real_seqs: list of np.ndarray (IKI in seconds from val dataset).
@@ -172,7 +173,8 @@ def _compute_per_state_spread(G, noise_dim: int, device, n_per_state: int = 200)
 
 
 def _build_generator(noise_dim: int, hidden_size: int, context_dim: int = 32,
-                     num_layers: int = 3, seq_len: int = 32):
+                     num_layers: int = 3, seq_len: int = 32,
+                     step_noise_scale: float = 0.0):
     """Build a TimingGenerator with custom noise_dim and hidden_size."""
     from layer3_dynamics.gan.generator import TimingGenerator
     return TimingGenerator(
@@ -181,6 +183,7 @@ def _build_generator(noise_dim: int, hidden_size: int, context_dim: int = 32,
         hidden_size=hidden_size,
         num_layers=num_layers,
         seq_len=seq_len,
+        step_noise_scale=step_noise_scale,
     )
 
 
@@ -210,22 +213,42 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
                Path("logs") / f"train_{safe_name}.jsonl"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    G = _build_generator(noise_dim, hidden_size).to(device)
+    G = _build_generator(
+        noise_dim, hidden_size,
+        num_layers=cfg.get("num_layers", 3),
+        step_noise_scale=cfg.get("step_noise_scale", 0.0),
+    ).to(device)
     D = TimingDiscriminator(context_dim=32, hidden_size=256).to(device)
+
+    best_ks          = float("inf")
+    best_score       = float("inf")
 
     # Resume from checkpoint if it exists
     start_epoch = 0
     if g_path.exists() and d_path.exists():
         G.load_state_dict(torch.load(g_path, map_location=device))
         D.load_state_dict(torch.load(d_path, map_location=device))
-        # Read last epoch from log
+        # Read log and recompute best_ks / best_score from all entries
         if log_path.exists():
             with open(log_path) as f:
                 lines = [l for l in f if l.strip()]
             if lines:
                 last = json.loads(lines[-1])
                 start_epoch = last.get("epoch", 0)
-        logger.info(f"Resumed from checkpoint at epoch {start_epoch}: {g_path}")
+                # Recompute best_ks and best_score across all log entries
+                # so that entries written before combined score was added are included
+                SPREAD_LAMBDA = 0.001
+                for line in lines:
+                    entry = json.loads(line)
+                    ks_val = entry.get("ks", float("inf"))
+                    sp_val = entry.get("state_spread_ms", 0.0)
+                    sc_val = ks_val - SPREAD_LAMBDA * sp_val
+                    if ks_val < best_ks:
+                        best_ks = ks_val
+                    if sc_val < best_score:
+                        best_score = sc_val
+        logger.info(f"Resumed from checkpoint at epoch {start_epoch}: {g_path} "
+                    f"(best_ks={best_ks:.4f}, best_score={best_score:.4f})")
 
     opt_G = optim.Adam(G.parameters(), lr=2e-4, betas=(0.0, 0.9))
     opt_D = optim.Adam(D.parameters(), lr=1e-4, betas=(0.0, 0.9))
@@ -253,7 +276,6 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
     loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True,
                         num_workers=0)
 
-    best_ks          = float("inf")
     no_improve       = 0
     below_target_cnt = 0   # 연속으로 KS < target_ks 달성 횟수
     ks_history       = []
@@ -304,9 +326,16 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
             else:
                 below_target_cnt = 0
 
+            # Combined score: lower is better
+            # spread bonus: 100ms spread ≈ 0.1 KS improvement
+            SPREAD_LAMBDA = 0.001
+            score = ks - SPREAD_LAMBDA * spread
+
             entry   = {
                 "epoch": epoch + 1, "ks": round(ks, 6),
                 "best_ks": round(min(best_ks, ks), 6),
+                "score": round(score, 6),
+                "best_score": round(min(best_score, score), 6),
                 "acf_mae": round(acf_mae, 4),
                 "state_spread_ms": round(spread, 2),
                 "g_loss": round(g_mean, 4), "d_loss": round(d_mean, 4),
@@ -319,18 +348,19 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
             with open(log_path, "a") as lf:
                 lf.write(json.dumps(entry) + "\n")
 
-            logger.info(f"  epoch {epoch+1:3d} | KS={ks:.4f} | best={best_ks:.4f} "
+            logger.info(f"  epoch {epoch+1:3d} | KS={ks:.4f} | score={score:.4f} | best_score={best_score:.4f} "
                         f"| ACF_MAE={acf_mae:.4f} | spread={spread:.1f}ms "
                         f"| G={g_mean:.3f} D={d_mean:.3f} "
                         f"| below_target={below_target_cnt}/5")
 
-            if ks < best_ks:
+            if score < best_score:
                 best_ks    = ks
+                best_score = score
                 no_improve = 0
                 # Save best checkpoint
                 torch.save(G.state_dict(), g_path)
                 torch.save(D.state_dict(), d_path)
-                logger.info(f"  ✓ Best checkpoint saved (KS={ks:.4f})")
+                logger.info(f"  ✓ Best checkpoint saved (KS={ks:.4f}, spread={spread:.1f}ms, score={score:.4f})")
             else:
                 no_improve += 1
 
@@ -393,8 +423,8 @@ def main(data, epochs, batch_size, eval_every, patience, quick, full, output, co
     logger.info(f"Epochs: {epochs} | batch={batch_size} | eval_every={eval_every}")
 
     # Filter configs
-    config_letters = [c for c in "ABCDE" if c in configs.upper()]
-    selected = [cfg for cfg, letter in zip(CONFIGS, "ABCDE") if letter in config_letters]
+    config_letters = [c for c in "ABCDEF" if c in configs.upper()]
+    selected = [cfg for cfg, letter in zip(CONFIGS, "ABCDEF") if letter in config_letters]
     logger.info(f"Running configs: {[c['name'] for c in selected]}")
 
     Path("logs").mkdir(exist_ok=True)

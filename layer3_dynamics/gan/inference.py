@@ -26,6 +26,7 @@ class GANInference:
             hidden_size=config.get("hidden_size", 256),
             num_layers=config.get("num_layers", 3),
             seq_len=self.seq_len,
+            step_noise_scale=config.get("step_noise_scale", 0.0),
         )
         self.G.to(self.device)
 

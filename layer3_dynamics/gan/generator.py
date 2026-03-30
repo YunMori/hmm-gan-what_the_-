@@ -10,12 +10,14 @@ class TimingGenerator(nn.Module):
     """
 
     def __init__(self, noise_dim: int = 16, context_dim: int = 32,
-                 hidden_size: int = 256, num_layers: int = 3, seq_len: int = 32):
+                 hidden_size: int = 256, num_layers: int = 3, seq_len: int = 32,
+                 step_noise_scale: float = 0.0):
         super().__init__()
         self.noise_dim = noise_dim
         self.context_dim = context_dim
         self.seq_len = seq_len
         self.hidden_size = hidden_size
+        self.step_noise_scale = step_noise_scale
 
         self.noise_proj = nn.Linear(noise_dim, hidden_size)
         self.lstm = nn.LSTM(
@@ -35,7 +37,9 @@ class TimingGenerator(nn.Module):
     def forward(self, noise: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
         # noise: (B, noise_dim), context: (B, context_dim)
         x = self.noise_proj(noise)                                        # (B, hidden)
-        x = x.unsqueeze(1).expand(-1, self.seq_len, -1)                  # (B, seq_len, hidden)
+        x = x.unsqueeze(1).expand(-1, self.seq_len, -1).clone()          # (B, seq_len, hidden)
+        if self.step_noise_scale > 0.0:
+            x = x + torch.randn_like(x) * self.step_noise_scale
         ctx = context.unsqueeze(1).expand(-1, self.seq_len, -1)          # (B, seq_len, context_dim)
         x = torch.cat([x, ctx], dim=-1)                                   # (B, seq_len, hidden+context_dim)
         out, _ = self.lstm(x)                                             # (B, seq_len, hidden)

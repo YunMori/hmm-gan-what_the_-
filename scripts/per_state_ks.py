@@ -126,7 +126,9 @@ def _bar(value: float, max_val: float = 1.0, width: int = 20) -> str:
               help="Override hidden_size for model architecture.")
 @click.option("--checkpoint", default=None, show_default=True,
               help="Override checkpoint path (default: model_dir/gan_generator_best.pth).")
-def main(model_dir, data, tag_real, n_samples, output, noise_dim, hidden_size, checkpoint):
+@click.option("--step-noise-scale", default=0.0, type=float, show_default=True,
+              help="Per-step noise scale for TimingGenerator (Config D).")
+def main(model_dir, data, tag_real, n_samples, output, noise_dim, hidden_size, checkpoint, step_noise_scale):
     if not SCIPY_AVAILABLE:
         logger.error("scipy is required. Run: pip install scipy")
         return
@@ -142,6 +144,7 @@ def main(model_dir, data, tag_real, n_samples, output, noise_dim, hidden_size, c
         gan_config["noise_dim"] = noise_dim
     if hidden_size is not None:
         gan_config["hidden_size"] = hidden_size
+    gan_config["step_noise_scale"] = step_noise_scale
 
     ckpt_path = checkpoint if checkpoint else f"{model_dir}/gan_generator_best.pth"
 
