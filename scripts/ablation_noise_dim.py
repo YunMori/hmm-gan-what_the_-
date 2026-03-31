@@ -34,6 +34,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from pathlib import Path
@@ -65,7 +66,15 @@ CONFIGS = [
     {"name": "D: noise=64, proj=64, nl=2+sn", "noise_dim": 64, "hidden_size": 64, "ratio": "2.0x+step_noise", "num_layers": 2, "step_noise_scale": 0.3},
     {"name": "E: noise=64, proj=256", "noise_dim": 64, "hidden_size": 256, "ratio": "8.0x (more noise)"},
     {"name": "F: noise=64, proj=64, nl=2",    "noise_dim": 64, "hidden_size": 64, "ratio": "2.0x",           "num_layers": 2, "step_noise_scale": 0.0},
+    {"name": "G: noise=64, proj=64, nl=2+decay+aux+proj",
+     "noise_dim": 64, "hidden_size": 64, "ratio": "2.0x+decay+aux+proj",
+     "num_layers": 2, "step_noise_scale": 0.3,
+     "step_noise_decay": True, "aux_lambda": 0.01, "proj_discriminator": True},
 ]
+
+# Expected mean IKI per HMM state (seconds) — from paper Table 2
+# [NORMAL, SLOW, FAST, ERROR, CORRECTION, PAUSE]
+HMM_EXPECTED_IKI_S = [0.120, 0.250, 0.060, 0.180, 0.100, 2.000]
 
 
 def _best_device() -> str:
@@ -218,7 +227,10 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
         num_layers=cfg.get("num_layers", 3),
         step_noise_scale=cfg.get("step_noise_scale", 0.0),
     ).to(device)
-    D = TimingDiscriminator(context_dim=32, hidden_size=256).to(device)
+    D = TimingDiscriminator(
+        context_dim=32, hidden_size=256,
+        use_proj=cfg.get("proj_discriminator", False),
+    ).to(device)
 
     best_ks          = float("inf")
     best_score       = float("inf")
@@ -284,9 +296,24 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
     logger.info(f"\n[{cfg['name']}] Starting training ({epochs} epochs, "
                 f"checkpoint→{g_path}, log→{log_path})...")
 
+    aux_lambda  = cfg.get("aux_lambda", 0.0)
+    decay_sched = cfg.get("step_noise_decay", False)
+    # Pre-build expected IKI tensor for aux loss (on device, seconds)
+    hmm_iki_s = torch.tensor(HMM_EXPECTED_IKI_S, dtype=torch.float32, device=device)
+
     for epoch in range(start_epoch, epochs):
+        # ── Step-noise decay schedule (Config G) ──────────────────────────────
+        if decay_sched:
+            if epoch < 150:
+                G.step_noise_scale = 0.3
+            elif epoch < 200:
+                frac = (epoch - 150) / 50.0
+                G.step_noise_scale = round(0.3 - frac * 0.2, 4)
+            else:
+                G.step_noise_scale = 0.05
+
         G.train(); D.train()
-        g_losses, d_losses = [], []
+        g_losses, d_losses, aux_losses = [], [], []
         for batch in loader:
             real = batch["timings"].to(device)
             ctx  = batch["context"][:, 0, :].to(device)
@@ -307,7 +334,23 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
             # G step ×1
             noise_g = torch.randn(B, noise_dim, device=device)
             fake_g  = G(noise_g, ctx)
-            g_loss  = -D(fake_g, ctx).mean()
+            g_adv_loss = -D(fake_g, ctx).mean()
+
+            # ── Auxiliary condition loss (Config G) ───────────────────────────
+            # MSE in log1p(ms) space — balances small states (60ms) and PAUSE (2000ms)
+            if aux_lambda > 0.0:
+                state_idx  = ctx[:, 6:12].argmax(dim=1)           # (B,)
+                target_iki = hmm_iki_s[state_idx]                  # (B,) seconds
+                gen_mean   = fake_g[:, :, 0].mean(dim=1)           # (B,) seconds
+                aux_loss   = F.mse_loss(
+                    torch.log1p(gen_mean   * 1000.0),              # log1p(ms)
+                    torch.log1p(target_iki * 1000.0),              # log1p(ms)
+                )
+                g_loss     = g_adv_loss + aux_lambda * aux_loss
+                aux_losses.append(aux_loss.item())
+            else:
+                g_loss = g_adv_loss
+
             opt_G.zero_grad(set_to_none=True)
             g_loss.backward()
             opt_G.step()
@@ -319,6 +362,7 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
             spread, _ = _compute_per_state_spread(G, noise_dim, device, n_per_state=100)
             g_mean    = sum(g_losses) / len(g_losses)
             d_mean    = sum(d_losses) / len(d_losses)
+            aux_mean  = sum(aux_losses) / len(aux_losses) if aux_losses else 0.0
 
             # 연속 target 달성 카운트
             if ks < target_ks:
@@ -339,6 +383,8 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
                 "acf_mae": round(acf_mae, 4),
                 "state_spread_ms": round(spread, 2),
                 "g_loss": round(g_mean, 4), "d_loss": round(d_mean, 4),
+                "aux_loss": round(aux_mean, 6),
+                "step_noise_scale": round(G.step_noise_scale, 4),
                 "no_improve": no_improve,
                 "below_target_cnt": below_target_cnt,
             }
@@ -348,9 +394,11 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
             with open(log_path, "a") as lf:
                 lf.write(json.dumps(entry) + "\n")
 
+            aux_str = f" | aux={aux_mean:.4f}" if aux_lambda > 0.0 else ""
+            sn_str  = f" | sn={G.step_noise_scale:.3f}" if decay_sched else ""
             logger.info(f"  epoch {epoch+1:3d} | KS={ks:.4f} | score={score:.4f} | best_score={best_score:.4f} "
                         f"| ACF_MAE={acf_mae:.4f} | spread={spread:.1f}ms "
-                        f"| G={g_mean:.3f} D={d_mean:.3f} "
+                        f"| G={g_mean:.3f} D={d_mean:.3f}{aux_str}{sn_str} "
                         f"| below_target={below_target_cnt}/5")
 
             if score < best_score:
@@ -405,7 +453,7 @@ def train_config(cfg: dict, dataset_path: str, epochs: int,
 @click.option("--full",       is_flag=True, help="Full mode: 300 epochs, all configs")
 @click.option("--output",     default="results/ablation_noise_dim.json", show_default=True)
 @click.option("--configs",    default="ABCDE", show_default=True,
-              help="Which configs to run (e.g. 'BCD' for configs B, C, D only)")
+              help="Which configs to run (e.g. 'BCD' for configs B, C, D only; supports up to G)")
 def main(data, epochs, batch_size, eval_every, patience, quick, full, output, configs):
     if quick:
         epochs     = 50
@@ -423,8 +471,8 @@ def main(data, epochs, batch_size, eval_every, patience, quick, full, output, co
     logger.info(f"Epochs: {epochs} | batch={batch_size} | eval_every={eval_every}")
 
     # Filter configs
-    config_letters = [c for c in "ABCDEF" if c in configs.upper()]
-    selected = [cfg for cfg, letter in zip(CONFIGS, "ABCDEF") if letter in config_letters]
+    config_letters = [c for c in "ABCDEFG" if c in configs.upper()]
+    selected = [cfg for cfg, letter in zip(CONFIGS, "ABCDEFG") if letter in config_letters]
     logger.info(f"Running configs: {[c['name'] for c in selected]}")
 
     Path("logs").mkdir(exist_ok=True)
